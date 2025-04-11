@@ -271,6 +271,8 @@ def create_task_metadata(
         }
 
         if test_behavior == TestBehavior.BUILD and node.resource_type in SUPPORTED_BUILD_RESOURCES:
+            if test_indirect_selection != TestIndirectSelection.EAGER:
+                args["indirect_selection"] = test_indirect_selection.value
             args["on_warning_callback"] = on_warning_callback
             exclude_detached_tests_if_needed(node, args, detached_from_parent)
             task_id, args = _get_task_id_and_args(
