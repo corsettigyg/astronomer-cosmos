@@ -193,22 +193,22 @@ def _get_task_id_and_args(
     args: dict[str, Any],
     use_task_group: bool,
     normalize_task_id: Callable[..., Any] | None,
+    normalize_task_display_name: Callable[..., Any] | None,
     resource_suffix: str,
     include_resource_type: bool = False,
-    normalize_task_display_name: Callable[..., Any] | None = None
 ) -> tuple[str, dict[str, Any]]:
     """
     Generate task ID and update args with display name if needed.
     """
     args_update = args
     task_display_name = f"{node.name}_{resource_suffix}"
-    
+
     if include_resource_type:
         task_display_name = f"{node.name}_{node.resource_type.value}_{resource_suffix}"
-    
+
     if normalize_task_display_name:
         task_display_name = normalize_task_display_name(node)
-    
+
     if use_task_group:
         task_id = resource_suffix
     elif normalize_task_id:
@@ -216,9 +216,9 @@ def _get_task_id_and_args(
         args_update["task_display_name"] = task_display_name
     else:
         task_id = task_display_name
-    
+
     args_update["task_display_name"] = task_display_name
-    
+
     return task_id, args_update
 
 
@@ -256,6 +256,7 @@ def create_task_metadata(
     use_task_group: bool = False,
     source_rendering_behavior: SourceRenderingBehavior = SourceRenderingBehavior.NONE,
     normalize_task_id: Callable[..., Any] | None = None,
+    normalize_task_display_name: Callable[..., Any] | None = None,
     test_behavior: TestBehavior = TestBehavior.AFTER_ALL,
     test_indirect_selection: TestIndirectSelection = TestIndirectSelection.EAGER,
     on_warning_callback: Callable[..., Any] | None = None,
@@ -293,7 +294,7 @@ def create_task_metadata(
             args["on_warning_callback"] = on_warning_callback
             exclude_detached_tests_if_needed(node, args, detached_from_parent)
             task_id, args = _get_task_id_and_args(
-                node, args, use_task_group, normalize_task_id, "build", include_resource_type=True
+                node, args, use_task_group, normalize_task_id,normalize_task_display_name, "build", include_resource_type=True
             )
         elif node.resource_type == DbtResourceType.MODEL:
             task_id, args = _get_task_id_and_args(node, args, use_task_group, normalize_task_id, "run")
