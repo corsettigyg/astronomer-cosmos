@@ -366,6 +366,7 @@ def generate_task_or_group(
     test_indirect_selection: TestIndirectSelection,
     on_warning_callback: Callable[..., Any] | None,
     normalize_task_id: Callable[..., Any] | None = None,
+    normalize_task_display_name: Callable[..., Any] | None = None,
     detached_from_parent: dict[str, DbtNode] | None = None,
     **kwargs: Any,
 ) -> BaseOperator | TaskGroup | None:
@@ -386,6 +387,7 @@ def generate_task_or_group(
         use_task_group=use_task_group,
         source_rendering_behavior=source_rendering_behavior,
         normalize_task_id=normalize_task_id,
+        normalize_task_display_name=normalize_task_display_name,
         test_behavior=test_behavior,
         test_indirect_selection=test_indirect_selection,
         on_warning_callback=on_warning_callback,
@@ -593,6 +595,7 @@ def build_airflow_graph(
     test_behavior = render_config.test_behavior
     source_rendering_behavior = render_config.source_rendering_behavior
     normalize_task_id = render_config.normalize_task_id
+    normalize_task_display_name = render_config.normalize_task_display_name
     tasks_map: dict[str, Union[TaskGroup, BaseOperator]] = {}
     task_or_group: TaskGroup | BaseOperator
 
@@ -621,6 +624,7 @@ def build_airflow_graph(
             test_indirect_selection=test_indirect_selection,
             on_warning_callback=on_warning_callback,
             normalize_task_id=normalize_task_id,
+            normalize_task_display_name=normalize_task_display_name,
             node=node,
             detached_from_parent=detached_from_parent,
         )
