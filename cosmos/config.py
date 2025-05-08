@@ -86,6 +86,7 @@ class RenderConfig:
     source_rendering_behavior: SourceRenderingBehavior = SourceRenderingBehavior.NONE
     airflow_vars_to_purge_dbt_ls_cache: list[str] = field(default_factory=list)
     normalize_task_id: Callable[..., Any] | None = None
+    normalize_task_display_name: Callable[..., Any] | None = None
     should_detach_multiple_parents_tests: bool = False
 
     def __post_init__(self, dbt_project_path: str | Path | None) -> None:
