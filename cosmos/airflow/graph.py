@@ -201,23 +201,27 @@ def _get_task_id_and_args(
     Generate task ID and update args with display name if needed.
     """
     args_update = args
-    task_display_name = f"{node.name}_{resource_suffix}"
+    task_name = f"{node.name}_{resource_suffix}"
 
     if include_resource_type:
-        task_display_name = f"{node.name}_{node.resource_type.value}_{resource_suffix}"
-
-    if normalize_task_display_name:
-        task_display_name = normalize_task_display_name(node)
+        task_name = f"{node.name}_{node.resource_type.value}_{resource_suffix}"
 
     if use_task_group:
         task_id = resource_suffix
-    elif normalize_task_id:
-        task_id = normalize_task_id(node)
-        args_update["task_display_name"] = task_display_name
-    else:
-        task_id = task_display_name
+        args_update["task_display_name"] = task_name
 
-    args_update["task_display_name"] = task_display_name
+    elif normalize_task_id and not normalize_task_display_name:
+        task_id = normalize_task_id(node)
+        args_update["task_display_name"] = task_name
+    elif not normalize_task_id and normalize_task_display_name:
+        task_id = task_name
+        args_update["task_display_name"] = normalize_task_display_name(node)
+    elif normalize_task_id and normalize_task_display_name:
+        task_id = normalize_task_id(node)
+        args_update["task_display_name"] = normalize_task_display_name(node)
+    else:
+        task_id = task_name
+        args_update["task_display_name"] = task_name
 
     return task_id, args_update
 
