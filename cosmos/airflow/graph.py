@@ -297,7 +297,7 @@ def create_task_metadata(
                 node, args, use_task_group, normalize_task_id,normalize_task_display_name, "build", include_resource_type=True
             )
         elif node.resource_type == DbtResourceType.MODEL:
-            task_id, args = _get_task_id_and_args(node, args, use_task_group, normalize_task_id, "run")
+            task_id, args = _get_task_id_and_args(node, args, use_task_group, normalize_task_id,normalize_task_display_name, "run")
         elif node.resource_type == DbtResourceType.SOURCE:
             args["on_warning_callback"] = on_warning_callback
 
@@ -309,7 +309,7 @@ def create_task_metadata(
                 return None
             args["select"] = f"source:{node.resource_name}"
             args.pop("models")
-            task_id, args = _get_task_id_and_args(node, args, use_task_group, normalize_task_id, "source")
+            task_id, args = _get_task_id_and_args(node, args, use_task_group, normalize_task_id,normalize_task_display_name, "source")
             if node.has_freshness is False and source_rendering_behavior == SourceRenderingBehavior.ALL:
                 # render sources without freshness as empty operators
                 # empty operator does not accept custom parameters (e.g., profile_args). recreate the args.
@@ -320,7 +320,7 @@ def create_task_metadata(
                 return TaskMetadata(id=task_id, operator_class="airflow.operators.empty.EmptyOperator", arguments=args)
         else:
             task_id, args = _get_task_id_and_args(
-                node, args, use_task_group, normalize_task_id, node.resource_type.value
+                node, args, use_task_group, normalize_task_id,normalize_task_display_name, node.resource_type.value
             )
 
         _override_profile_if_needed(args, node.profile_config_to_override)
