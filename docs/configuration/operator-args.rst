@@ -146,11 +146,16 @@ The following operator args support templating, and are accessible both through 
 
 - ``env``
 - ``vars``
+- ``project_keys`` (new in v1.11)
 - ``full_refresh`` (for the ``build``, ``seed``, and ``run`` operators since Cosmos 1.4.)
 - ``dbt_cmd_flags``
 
 .. note::
     Using Jinja templating for ``env`` and ``vars`` may cause problems when using ``LoadMode.DBT_LS`` to render your DAG.
+
+.. note::
+    ``project_keys`` dynamically modifies the ``dbt_project.yml`` file at runtime, unlike ``vars`` which are passed as command-line arguments. 
+    See :doc:`project-config` for detailed ``project_keys`` documentation and examples.
 
 Example usage of templated ``dbt_cmd_flags`` for microbatch models with event-time ranges:
 

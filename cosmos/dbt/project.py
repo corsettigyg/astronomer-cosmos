@@ -157,3 +157,127 @@ def change_working_directory(path: str) -> Generator[None, None, None]:
         yield
     finally:
         os.chdir(previous_cwd)
+
+
+def apply_project_keys_to_dbt_project_yml(project_path: Path, project_keys: dict[str, str]) -> None:
+    """
+    Dynamically modify dbt_project.yml with runtime values from project_keys.
+    
+    This function reads the existing dbt_project.yml file, applies the project_keys
+    modifications using dot notation for nested keys, and writes the modified
+    configuration back to the file.
+    
+    :param project_path: Path to the dbt project directory containing dbt_project.yml
+    :param project_keys: Dictionary of keys to replace in dbt_project.yml.
+                        Keys can use dot notation for nested values (e.g., "models.my_project.materialized")
+    
+    :raises FileNotFoundError: If dbt_project.yml doesn't exist in the project_path
+    :raises yaml.YAMLError: If the existing dbt_project.yml contains invalid YAML
+    """
+    if not project_keys:
+        return
+    
+    dbt_project_yml_path = project_path / DBT_PROJECT_FILENAME
+    
+    if not dbt_project_yml_path.exists():
+        raise FileNotFoundError(f"dbt_project.yml not found at {dbt_project_yml_path}")
+    
+    logger.info("Applying project_keys to dbt_project.yml at %s", dbt_project_yml_path)
+    logger.debug("Project keys to apply: %s", project_keys)
+    
+    try:
+        with open(dbt_project_yml_path, "r") as f:
+            project_config = yaml.safe_load(f) or {}
+    except yaml.YAMLError as e:
+        logger.error("Failed to parse existing dbt_project.yml: %s", e)
+        raise
+    
+    # Apply project_keys to the configuration
+    for key, value in project_keys.items():
+        _set_nested_key(project_config, key, value)
+    
+    # Write the modified configuration back to the file
+    try:
+        with open(dbt_project_yml_path, "w") as f:
+            yaml.dump(project_config, f, default_flow_style=False, sort_keys=False)
+        logger.info("Successfully applied project_keys to dbt_project.yml")
+    except Exception as e:
+        logger.error("Failed to write modified dbt_project.yml: %s", e)
+        raise
+
+
+def _set_nested_key(config_dict: dict, key: str, value: str) -> None:
+    """
+    Set a nested key in a dictionary using dot notation.
+    
+    :param config_dict: The dictionary to modify
+    :param key: The key in dot notation (e.g., "models.my_project.materialized")
+    :param value: The value to set
+    """
+    keys = key.split(".")
+    current_dict = config_dict
+    
+    # Navigate to the parent of the final key, creating nested dicts as needed
+    for k in keys[:-1]:
+        if k not in current_dict:
+            current_dict[k] = {}
+        elif not isinstance(current_dict[k], dict):
+            # If the key exists but is not a dict, we need to convert it
+            logger.warning(
+                "Key '%s' exists but is not a dictionary. Converting to dict to support nested key '%s'",
+                k, key
+            )
+            current_dict[k] = {}
+        current_dict = current_dict[k]
+    
+    # Set the final key
+    final_key = keys[-1]
+    
+    # Try to convert the value to appropriate Python types
+    converted_value = _convert_yaml_value(value)
+    
+    logger.debug("Setting key '%s' to value '%s' (type: %s)", key, converted_value, type(converted_value).__name__)
+    current_dict[final_key] = converted_value
+
+
+def _convert_yaml_value(value: str):
+    """
+    Convert a string value to appropriate Python type for YAML serialization.
+    
+    This function attempts to convert string values to their appropriate Python
+    types (bool, int, float, list, dict) while preserving strings that should
+    remain as strings.
+    
+    :param value: The string value to convert
+    :return: The converted value
+    """
+    if not isinstance(value, str):
+        return value
+    
+    # Handle boolean values
+    if value.lower() in ("true", "yes", "on"):
+        return True
+    elif value.lower() in ("false", "no", "off"):
+        return False
+    elif value.lower() in ("null", "none", "~", ""):
+        return None
+    
+    # Try to parse as JSON for lists and dicts
+    if value.startswith(("[", "{")):
+        try:
+            import json
+            return json.loads(value)
+        except json.JSONDecodeError:
+            pass
+    
+    # Try to parse as number
+    try:
+        if "." in value:
+            return float(value)
+        else:
+            return int(value)
+    except ValueError:
+        pass
+    
+    # Return as string if no conversion applies
+    return value
