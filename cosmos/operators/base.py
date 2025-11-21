@@ -44,6 +44,8 @@ class AbstractDbtBase(metaclass=ABCMeta):
     :param vars: dbt optional argument - Supply variables to the project. This argument overrides variables
         defined in your dbt_project.yml file. This argument should be a YAML
         string, eg. '{my_variable: my_value}' (templated)
+    :param project_keys: Dictionary of keys to dynamically replace in dbt_project.yml at runtime. Keys can use
+        dot notation for nested values (e.g., "models.my_project.materialized"). Supports Airflow templating. (templated)
     :param models: dbt optional argument that specifies which nodes to include.
     :param cache_selected_only:
     :param no_version_check: dbt optional argument - If set, skip ensuring dbt's version matches the one specified in
@@ -80,7 +82,7 @@ class AbstractDbtBase(metaclass=ABCMeta):
     :param extra_context: A dictionary of values to add to the TaskInstance's Context
     """
 
-    template_fields: Sequence[str] = ("env", "select", "exclude", "selector", "vars", "models", "dbt_cmd_flags")
+    template_fields: Sequence[str] = ("env", "select", "exclude", "selector", "vars", "models", "dbt_cmd_flags", "project_keys")
     global_flags = (
         "project_dir",
         "select",
@@ -106,6 +108,7 @@ class AbstractDbtBase(metaclass=ABCMeta):
         exclude: str | None = None,
         selector: str | None = None,
         vars: dict[str, str] | None = None,
+        project_keys: dict[str, str] | None = None,
         models: str | None = None,
         emit_datasets: bool = True,
         indirect_selection: str | None = None,
@@ -135,6 +138,7 @@ class AbstractDbtBase(metaclass=ABCMeta):
         self.exclude = exclude
         self.selector = selector
         self.vars = vars
+        self.project_keys = project_keys
         self.models = models
         self.emit_datasets = emit_datasets
         self.indirect_selection = indirect_selection

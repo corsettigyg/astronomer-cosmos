@@ -520,6 +520,63 @@ class AbstractDbtLocalBase(AbstractDbtBase):
         if latest_partial_parse is not None:
             cache._copy_partial_parse_to_project(latest_partial_parse, tmp_dir_path)
 
+    def _apply_project_keys(self, tmp_dir_path: Path, context: Context) -> None:
+        """
+        Apply project_keys to dbt_project.yml in the temporary project directory.
+        
+        :param tmp_dir_path: Path to the temporary project directory
+        :param context: Airflow context for template rendering
+        """
+        from cosmos.dbt.project import apply_project_keys_to_dbt_project_yml
+        
+        if not self.project_keys:
+            return
+        
+        logger.info("Applying project_keys to dbt_project.yml")
+        
+        # Render project_keys templates with Airflow context
+        rendered_project_keys = self._render_project_keys(context)
+        
+        # Apply the rendered project_keys to dbt_project.yml
+        apply_project_keys_to_dbt_project_yml(tmp_dir_path, rendered_project_keys)
+
+    def _render_project_keys(self, context: Context) -> dict[str, str]:
+        """
+        Render project_keys templates using Airflow context.
+        
+        :param context: Airflow context for template rendering
+        :return: Dictionary with rendered project_keys values
+        """
+        if not self.project_keys:
+            return {}
+        
+        rendered_keys = {}
+        
+        for key, value in self.project_keys.items():
+            if isinstance(value, str):
+                # Use Airflow's template rendering
+                try:
+                    from airflow.models.taskinstance import TaskInstance
+                    from airflow.utils.context import Context as AirflowContext
+                    
+                    # Create a temporary task instance for template rendering
+                    # This is similar to how vars are rendered in the existing codebase
+                    if hasattr(context.get('task_instance'), 'render_template'):
+                        rendered_value = context['task_instance'].render_template(value, context)
+                    else:
+                        # Fallback: simple string formatting with context
+                        rendered_value = value.format(**{k: v for k, v in context.items() if isinstance(v, (str, int, float, bool))})
+                    
+                    rendered_keys[key] = rendered_value
+                    logger.debug("Rendered project_key '%s': '%s' -> '%s'", key, value, rendered_value)
+                except Exception as e:
+                    logger.warning("Failed to render project_key '%s' with value '%s': %s. Using original value.", key, value, e)
+                    rendered_keys[key] = value
+            else:
+                rendered_keys[key] = value
+        
+        return rendered_keys
+
     def _generate_dbt_flags(self, tmp_project_dir: str, profile_path: Path) -> list[str]:
         dbt_flags = [
             "--project-dir",
@@ -660,6 +717,10 @@ class AbstractDbtLocalBase(AbstractDbtBase):
             env = {k: str(v) for k, v in env.items()}
 
             self._clone_project(tmp_dir_path)
+
+            # Apply project_keys if configured
+            if self.project_keys:
+                self._apply_project_keys(tmp_dir_path, context)
 
             if self.partial_parse:
                 self._handle_partial_parse(tmp_dir_path)

@@ -176,6 +176,9 @@ class ProjectConfig:
     :param dbt_vars: Dictionary of dbt variables for the project. This argument overrides variables defined in your dbt_project.yml
         file. The dictionary is dumped to a yaml string and passed to dbt commands as the --vars argument. Variables are only
         supported for rendering when using ``RenderConfig.LoadMode.DBT_LS`` and ``RenderConfig.LoadMode.CUSTOM`` load mode.
+    :param project_keys: Dictionary of keys to dynamically replace in dbt_project.yml at runtime. This allows for dynamic
+        modification of project configuration based on Airflow context. Keys can use dot notation for nested values
+        (e.g., "models.my_project.materialized"). Supports Airflow templating.
     :param partial_parse: If True, then attempt to use the ``partial_parse.msgpack`` if it exists. This is only used
         for the ``LoadMode.DBT_LS`` load mode, and for the ``ExecutionMode.LOCAL`` and ``ExecutionMode.VIRTUALENV``
         execution modes.
@@ -203,6 +206,7 @@ class ProjectConfig:
         project_name: str | None = None,
         env_vars: dict[str, str] | None = None,
         dbt_vars: dict[str, str] | None = None,
+        project_keys: dict[str, str] | None = None,
         partial_parse: bool = True,
     ):
         # Since we allow dbt_project_path to be defined in ExecutionConfig and RenderConfig
@@ -245,6 +249,7 @@ class ProjectConfig:
 
         self.env_vars = env_vars
         self.dbt_vars = dbt_vars
+        self.project_keys = project_keys
         self.partial_parse = partial_parse
         self.install_dbt_deps = install_dbt_deps
         self.copy_dbt_packages = copy_dbt_packages

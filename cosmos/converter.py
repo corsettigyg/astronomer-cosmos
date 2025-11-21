@@ -302,6 +302,7 @@ class DbtToAirflowConverter:
 
         env_vars = operator_args.get("env") or project_config.env_vars
         dbt_vars = operator_args.get("vars") or project_config.dbt_vars
+        project_keys = operator_args.get("project_keys") or project_config.project_keys
         task_args = {
             **operator_args,
             "project_dir": execution_config.project_path,
@@ -310,6 +311,7 @@ class DbtToAirflowConverter:
             "emit_datasets": render_config.emit_datasets,
             "env": env_vars,
             "vars": dbt_vars,
+            "project_keys": project_keys,
             "cache_dir": cache_dir,
             "manifest_filepath": project_config.manifest_path,
         }
