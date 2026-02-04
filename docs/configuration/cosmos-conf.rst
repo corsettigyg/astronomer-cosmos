@@ -261,6 +261,46 @@ This page lists all available Airflow configurations that affect ``astronomer-co
         :start-after: [START cosmos_init_imports]
         :end-before: [END cosmos_init_imports]
 
+.. _enable_streaming_manifest_parser:
+
+`enable_streaming_manifest_parser`_:
+    (Introduced in Cosmos 1.13.0): When enabled, Cosmos uses the ``ijson`` library to stream-parse large manifest files
+    instead of loading them entirely into memory. This can significantly reduce memory usage for large dbt projects
+    (500+ models) where manifest files can be 50-200MB.
+
+    When multiple DAGs parse manifests simultaneously, this feature helps prevent Out Of Memory (OOM) errors by
+    avoiding the memory spike caused by loading entire manifest files into memory.
+
+    Requires the optional ``ijson`` dependency: ``pip install "astronomer-cosmos[streaming]"``
+
+    The streaming parser automatically falls back to standard parsing if:
+
+    - ``ijson`` is not installed
+    - The manifest file is smaller than the threshold (see ``streaming_manifest_threshold_mb``)
+    - Any error occurs during streaming parsing
+
+    - Default: ``False``
+    - Environment Variable: ``AIRFLOW__COSMOS__ENABLE_STREAMING_MANIFEST_PARSER``
+
+    .. note::
+        Memory savings depend on manifest size. Typical savings are:
+
+        - 100 models (~10MB manifest): ~50% reduction
+        - 500 models (~50MB manifest): ~66% reduction
+        - 1000 models (~100MB manifest): ~73% reduction
+
+.. _streaming_manifest_threshold_mb:
+
+`streaming_manifest_threshold_mb`_:
+    (Introduced in Cosmos 1.13.0): The minimum manifest file size (in megabytes) required to trigger the streaming
+    manifest parser. Manifests smaller than this threshold will use the standard ``json.load()`` approach even
+    when ``enable_streaming_manifest_parser`` is enabled.
+
+    This threshold exists because streaming parsing has some overhead from multiple file seeks, which may not be
+    beneficial for smaller manifests.
+
+    - Default: ``25``
+    - Environment Variable: ``AIRFLOW__COSMOS__STREAMING_MANIFEST_THRESHOLD_MB``
 
 [openlineage]
 ~~~~~~~~~~~~~

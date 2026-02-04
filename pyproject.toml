@@ -119,6 +119,9 @@ azure-container-instance = [
 gcp-cloud-run-job = [
     "apache-airflow-providers-google>=10.11.0",
 ]
+streaming = [
+    "ijson>=3.2.0,<4.0.0",
+]
 
 [project.entry-points.apache_airflow_provider]
 provider_info = "cosmos.provider_info:get_provider_info"

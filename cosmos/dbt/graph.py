@@ -1101,6 +1101,164 @@ class DbtGraph:
 
         return self.parse_yaml_selectors(selector_definitions)
 
+    def _should_use_streaming_manifest_parser(self) -> bool:
+        """
+        Determine if the streaming manifest parser should be used.
+
+        Returns True only when:
+        1. Feature is enabled via settings
+        2. ijson is installed
+        3. Manifest size exceeds the configured threshold
+        """
+        if not settings.enable_streaming_manifest_parser:
+            return False
+
+        try:
+            import ijson
+
+            logger.debug("ijson backend: %s", ijson.backend)
+        except ImportError:
+            logger.debug("ijson not installed, streaming manifest parser unavailable")
+            return False
+
+        try:
+            if self.project.manifest_path is None:
+                return False
+            manifest_size_mb = self.project.manifest_path.stat().st_size / (1024 * 1024)
+            return manifest_size_mb >= settings.streaming_manifest_threshold_mb
+        except (OSError, AttributeError):
+            return False
+
+    def _create_node_from_dict(self, unique_id: str, node_dict: dict) -> DbtNode | None:
+        """
+        Create a DbtNode from a streamed node dictionary.
+
+        Returns None if the node should be skipped (e.g., external references without file paths).
+        """
+        # External nodes (e.g., from dbt-loom) may not have a file path - skip them
+        original_file_path = node_dict.get("original_file_path")
+        if not original_file_path:
+            logger.debug(
+                "Skipping node `%s` because it has no file path (likely an external reference from dbt-loom or similar)",
+                unique_id,
+            )
+            return None
+
+        if TYPE_CHECKING:
+            assert self.execution_config.project_path is not None  # pragma: no cover
+
+        return DbtNode(
+            unique_id=unique_id,
+            package_name=node_dict.get("package_name"),
+            resource_type=DbtResourceType(node_dict["resource_type"]),
+            depends_on=node_dict.get("depends_on", {}).get("nodes", []),
+            file_path=self.execution_config.project_path / _normalize_path(original_file_path),
+            tags=node_dict.get("tags") or [],
+            config=node_dict.get("config") or {},
+            has_freshness=(
+                is_freshness_effective(node_dict.get("freshness"))
+                if DbtResourceType(node_dict["resource_type"]) == DbtResourceType.SOURCE
+                else False
+            ),
+        )
+
+    def load_from_dbt_manifest_streaming(self) -> None:
+        """
+        Memory-efficient manifest loading using ijson streaming parser.
+
+        This method streams through the manifest file section by section,
+        avoiding loading the entire JSON into memory at once. This can
+        significantly reduce memory usage for large dbt projects.
+
+        Requires the optional 'ijson' dependency to be installed.
+
+        Updates in-place:
+        * self.nodes
+        * self.filtered_nodes
+        """
+        self.load_method = LoadMode.DBT_MANIFEST
+        logger.info(
+            "Trying to parse the dbt project `%s` using streaming manifest parser...", self.project.project_name
+        )
+
+        if not self.project.is_manifest_available():
+            raise CosmosLoadDbtException(f"Unable to load manifest using {self.project.manifest_path}")
+
+        if not self.execution_config.project_path:
+            raise CosmosLoadDbtException("Unable to load manifest without ExecutionConfig.dbt_project_path")
+
+        try:
+            import ijson
+        except ImportError:
+            logger.warning("ijson not installed, falling back to standard manifest loading")
+            return self.load_from_dbt_manifest()
+
+        if TYPE_CHECKING:
+            assert self.project.manifest_path is not None  # pragma: no cover
+
+        nodes: dict[str, DbtNode] = {}
+
+        # Use binary mode for better performance with ijson
+        with self.project.manifest_path.open("rb") as fp:
+            # Stream nodes section
+            for unique_id, node_dict in ijson.kvitems(fp, "nodes", use_float=True):
+                node = self._create_node_from_dict(unique_id, node_dict)
+                if node:
+                    nodes[node.unique_id] = node
+
+            # Reset file position and stream sources
+            fp.seek(0)
+            for unique_id, node_dict in ijson.kvitems(fp, "sources", use_float=True):
+                node = self._create_node_from_dict(unique_id, node_dict)
+                if node:
+                    nodes[node.unique_id] = node
+
+            # Reset file position and stream exposures
+            fp.seek(0)
+            for unique_id, node_dict in ijson.kvitems(fp, "exposures", use_float=True):
+                node = self._create_node_from_dict(unique_id, node_dict)
+                if node:
+                    nodes[node.unique_id] = node
+
+            # Handle YAML selectors if specified
+            if self.render_config.selector:
+                fp.seek(0)
+                # Selectors section is typically small, collect all at once
+                selector_definitions = dict(ijson.kvitems(fp, "selectors", use_float=True))
+
+                if not selector_definitions:
+                    raise CosmosLoadDbtException(f"Selectors not found in manifest file `{self.project.manifest_path}`")
+
+                yaml_selectors = self.load_parsed_selectors(selector_definitions)
+                selections = yaml_selectors.get_parsed(self.render_config.selector)
+
+                if not selections:
+                    raise CosmosLoadDbtException(
+                        f"Selector `{self.render_config.selector}` not found in parsed YAML selectors `{selector_definitions}`"
+                    )
+
+                self.nodes = nodes
+                self.filtered_nodes = select_nodes(
+                    project_dir=self.execution_config.project_path,
+                    nodes=nodes,
+                    select=selections["select"],
+                    exclude=selections["exclude"],
+                )
+            else:
+                self.nodes = nodes
+                self.filtered_nodes = select_nodes(
+                    project_dir=self.execution_config.project_path,
+                    nodes=nodes,
+                    select=self.render_config.select,
+                    exclude=self.render_config.exclude,
+                )
+
+        logger.info(
+            "Cosmos performance: Streaming manifest parser loaded %d nodes (%d after filtering)",
+            len(self.nodes),
+            len(self.filtered_nodes),
+        )
+
     def load_from_dbt_manifest(self) -> None:
         """
         This approach accurately loads `dbt` projects using the `manifest.yml` file.
@@ -1108,10 +1266,17 @@ class DbtGraph:
         However, since the Manifest does not represent filters, it relies on the Custom Cosmos implementation
         to filter out the nodes relevant to the user (based on self.exclude and self.select).
 
+        If streaming manifest parser is enabled and manifest is large enough, it will use
+        the streaming approach for better memory efficiency.
+
         Updates in-place:
         * self.nodes
         * self.filtered_nodes
         """
+        # Check if streaming parser should be used
+        if self._should_use_streaming_manifest_parser():
+            return self.load_from_dbt_manifest_streaming()
+
         self.load_method = LoadMode.DBT_MANIFEST
         logger.info("Trying to parse the dbt project `%s` using a dbt manifest...", self.project.project_name)
 
