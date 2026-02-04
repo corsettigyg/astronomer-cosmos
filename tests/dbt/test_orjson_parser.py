@@ -2,6 +2,7 @@
 Tests for the experimental orjson parser feature.
 """
 
+import importlib.util
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,11 +17,7 @@ SAMPLE_MANIFEST = Path(__file__).parent.parent / "sample/manifest.json"
 
 def _is_orjson_available() -> bool:
     """Check if orjson is available for testing."""
-    try:
-        import orjson
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec("orjson") is not None
 
 
 class TestOrjsonParserSettings:
@@ -106,7 +103,8 @@ class TestOrjsonParserWithOrjson:
             execution_config=execution_config,
             render_config=render_config,
         )
-        dbt_graph_orjson.load_from_dbt_manifest()
+        with patch.object(settings, "enable_orjson_parser", True):
+            dbt_graph_orjson.load_from_dbt_manifest()
 
         # Compare results
         assert dbt_graph_standard.nodes.keys() == dbt_graph_orjson.nodes.keys()
